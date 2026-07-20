@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How This RAG Pipeline Works</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#14171c; --sub:#5b6472;
+    --line:#e2e5ea; --accent:#0f7b6c; --accent-ink:#ffffff;
+    --accent-soft:#e3f3f0; --warn:#b8860b; --shadow:0 1px 2px rgba(16,24,32,.06),0 8px 24px rgba(16,24,32,.06);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e1114; --panel:#171b20; --ink:#e8ebef; --sub:#9aa4b2;
+      --line:#2a2f37; --accent:#3ddbc0; --accent-ink:#08201b;
+      --accent-soft:#123330; --warn:#e0b34d; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.35);
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    line-height:1.45; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px;}
+
+  header.top{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:flex-end;margin-bottom:20px;}
+  header.top h1{font-size:1.6rem;margin:0 0 6px;letter-spacing:-.01em;}
+  header.top p{margin:0;color:var(--sub);max-width:560px;font-size:.95rem;}
+  a.repo-link{color:var(--accent);text-decoration:none;font-size:.85rem;font-weight:600;white-space:nowrap;}
+  a.repo-link:hover{text-decoration:underline;}
+
+  .tabs{display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;width:fit-content;box-shadow:var(--shadow);margin-bottom:22px;}
+  .tabs button{
+    appearance:none;border:0;background:transparent;color:var(--sub);
+    font:inherit;font-weight:600;font-size:.88rem;padding:9px 16px;border-radius:9px;cursor:pointer;
+    transition:background .15s,color .15s;
+  }
+  .tabs button.active{background:var(--accent);color:var(--accent-ink);}
+
+  .stage-row{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:6px 2px 18px;scrollbar-width:thin;}
+  .stage-card{
+    flex:0 0 148px;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:14px 12px;text-align:center;cursor:pointer;box-shadow:var(--shadow);
+    transition:transform .18s, border-color .18s, background .18s;
+    position:relative;
+  }
+  .stage-card:hover{transform:translateY(-2px);}
+  .stage-card .ic{font-size:1.6rem;line-height:1;margin-bottom:8px;}
+  .stage-card .lb{font-size:.82rem;font-weight:700;margin-bottom:3px;}
+  .stage-card .tg{font-size:.72rem;color:var(--sub);}
+  .stage-card.active{border-color:var(--accent);background:var(--accent-soft);}
+  .stage-card.done .ic{opacity:.55;}
+  .stage-card.active::after{
+    content:"";position:absolute;inset:-1px;border-radius:14px;border:2px solid var(--accent);
+    animation:pulse 1.8s ease-in-out infinite;pointer-events:none;
+  }
+  @keyframes pulse{0%,100%{opacity:.55;}50%{opacity:1;}}
+
+  .connector{flex:1 1 34px;min-width:34px;display:flex;align-items:center;justify-content:center;position:relative;}
+  .connector svg{width:100%;height:22px;overflow:visible;}
+  .connector path{stroke:var(--line);stroke-width:2;fill:none;}
+  .connector .dot{opacity:0;}
+  .connector.flow .dot{opacity:1;animation:travel 1.05s linear;}
+  @keyframes travel{
+    0%{offset-distance:0%;opacity:1;}
+    90%{opacity:1;}
+    100%{offset-distance:100%;opacity:0;}
+  }
+
+  .controls{display:flex;align-items:center;gap:10px;margin:4px 0 22px;flex-wrap:wrap;}
+  .controls button{
+    appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    font:inherit;font-weight:600;font-size:.85rem;padding:9px 14px;border-radius:9px;cursor:pointer;
+    box-shadow:var(--shadow); transition:border-color .15s, color .15s;
+  }
+  .controls button:hover{border-color:var(--accent);color:var(--accent);}
+  .controls button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+  .dots{display:flex;gap:6px;margin-left:4px;}
+  .dots span{width:7px;height:7px;border-radius:50%;background:var(--line);display:inline-block;cursor:pointer;}
+  .dots span.on{background:var(--accent);}
+  .note{font-size:.76rem;color:var(--sub);margin-left:auto;}
+
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px;
+    box-shadow:var(--shadow); min-height:220px;
+  }
+  .panel h2{margin:0 0 4px;font-size:1.05rem;display:flex;align-items:center;gap:10px;}
+  .panel h2 .badge{
+    font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+    background:var(--accent-soft);color:var(--accent);padding:3px 8px;border-radius:6px;
+  }
+  .panel .desc{color:var(--sub);font-size:.9rem;margin:0 0 16px;}
+  .panel .body{font-size:.88rem;}
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:5px 14px;font-family:var(--mono);font-size:.8rem;margin:10px 0;}
+  .kv div:nth-child(odd){color:var(--sub);}
+  .code{
+    background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+    font-family:var(--mono);font-size:.78rem;white-space:pre-wrap;overflow-x:auto;margin:10px 0;
+  }
+  .chip{display:inline-block;background:var(--accent-soft);color:var(--accent);font-size:.72rem;font-weight:700;
+    padding:2px 8px;border-radius:6px;margin:2px 4px 2px 0;font-family:var(--mono);}
+
+  .cand{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:.82rem;}
+  .cand:last-child{border-bottom:0;}
+  .cand .src{flex:0 0 auto;color:var(--sub);font-family:var(--mono);font-size:.72rem;}
+  .cand .txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cand .bar-wrap{flex:0 0 90px;height:6px;background:var(--line);border-radius:4px;overflow:hidden;}
+  .cand .bar{height:100%;background:var(--accent);border-radius:4px;}
+  .cand.kept{background:var(--accent-soft);border-radius:8px;padding:7px 8px;}
+  .cand.dropped{opacity:.4;text-decoration:line-through;}
+
+  .vecrow{display:flex;gap:2px;align-items:flex-end;height:46px;margin:12px 0 4px;}
+  .vecrow i{flex:1;background:var(--accent);border-radius:2px 2px 0 0;opacity:.75;}
+
+  .chunkwin{font-family:var(--mono);font-size:.76rem;line-height:1.7;background:var(--bg);border:1px solid var(--line);
+    border-radius:10px;padding:12px 14px;margin:10px 0;}
+  .chunkwin .a{background:var(--accent-soft);color:var(--accent);padding:1px 2px;border-radius:3px;}
+  .chunkwin .b{background:var(--warn);color:#1a1a1a;padding:1px 2px;border-radius:3px;opacity:.55;}
+
+  .answer{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:.86rem;}
+  .answer .src-line{margin-top:10px;font-size:.75rem;color:var(--sub);}
+
+  footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);color:var(--sub);font-size:.8rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+  footer a{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>🔬 Under the Hood: How This RAG Pipeline Works</h1>
+      <p>Step through the two flows that make up this project — building the knowledge base, and answering a question from it. Everything shown reflects the real code paths, config defaults, and models used in this repo.</p>
+    </div>
+    <a class="repo-link" href="../" target="_blank" rel="noopener">← back to repo README</a>
+  </header>
+
+  <div class="tabs" id="tabs">
+    <button data-p="ingest" class="active">📥 Ingestion</button>
+    <button data-p="query">❓ Query &amp; Answer</button>
+  </div>
+
+  <div class="stage-row" id="stageRow"></div>
+
+  <div class="controls">
+    <button id="prevBtn">◀ Prev</button>
+    <button id="playBtn" class="primary">▶ Play</button>
+    <button id="nextBtn">Next ▶</button>
+    <button id="resetBtn">⟲ Reset</button>
+    <div class="dots" id="dots"></div>
+    <div class="note">Illustrative walkthrough — vectors &amp; scores are mocked for clarity, not computed live.</div>
+  </div>
+
+  <div class="panel" id="panel"></div>
+
+  <footer>
+    <span>Confluence RAG Pipeline — self-hosted, no managed services.</span>
+    <span><a href="../">View source on GitHub</a></span>
+  </footer>
+</div>
+
+<script>
+const QUESTION = "What are the password requirements when creating a user?";
+const DOC = "user-master-service-docs.md";
+
+function bar(seed, n){
+  let out = [];
+  let x = seed;
+  for(let i=0;i<n;i++){
+    x = (x*1103515245+12345) & 0x7fffffff;
+    out.push(20 + (x % 100)*0.8);
+  }
+  return out;
+}
+function vecRow(seed){
+  return `<div class="vecrow">${bar(seed,48).map(h=>`<i style="height:${h}%"></i>`).join("")}</div>
+  <div style="font-size:.72rem;color:var(--sub)">illustrative 768-dim embedding · first 48 dims shown</div>`;
+}
+
+const INGEST = [
+  {
+    id:"source", icon:"📄", label:"Source Doc", tag:"MinIO / S3",
+    title:"1 · Pick up the document", badge:"boto3",
+    desc:"An ingestion run starts by listing objects in the S3/MinIO bucket and comparing each file's ETag against what's recorded in <code>.ingestion_state.json</code>.",
+    body:`
+      <div class="kv">
+        <div>bucket</div><div>rag-docs</div>
+        <div>file</div><div>${DOC}</div>
+        <div>type</div><div>Markdown (.md)</div>
+        <div>mode</div><div>incremental — skip if ETag unchanged</div>
+      </div>
+      <div class="code"># ingest.py
+for key in list_bucket_objects(bucket):
+    if etag_changed(key):
+        download_and_process(key)   # new or modified only
+    else:
+        skip(key)</div>`
+  },
+  {
+    id:"parse", icon:"🔍", label:"Parse", tag:"pypdf / markdown-it-py",
+    title:"2 · Extract raw text", badge:"markdown-it-py",
+    desc:"Markdown is parsed with <code>markdown-it-py</code> (PDFs use <code>pypdf</code>) to pull out clean plain text, stripping formatting syntax.",
+    body:`
+      <div class="code"># User Master Service — API Reference
+**Version:** 2.4.0 | **Team:** Platform Engineering...
+
+The User Master Service (UMS) is the single source
+of truth for all identity and access management...
+
+#### Password Policy (Platform Defaults)
+| Rule | Requirement |
+| Minimum length | 12 characters |
+| Uppercase letters | At least 1 required |
+...</div>`
+  },
+  {
+    id:"chunk", icon:"✂️", label:"Chunk", tag:"500 words / 50 overlap",
+    title:"3 · Split into overlapping chunks", badge:"chunker.py",
+    desc:"Text is split on word boundaries into 500-word chunks with a 50-word overlap, so no sentence-level context is lost at a chunk edge.",
+    body:`
+      <div class="kv">
+        <div>CHUNK_SIZE</div><div>500 words</div>
+        <div>CHUNK_OVERLAP</div><div>50 words</div>
+        <div>step</div><div>size − overlap = 450 words/chunk</div>
+      </div>
+      <div class="chunkwin"><span class="a">chunk_index=0 → words[0:500]</span><br>
+      <span class="b">chunk_index=1 → words[450:950]</span>  ← 50-word overlap with chunk 0<br>
+      chunk_index=2 → words[900:1400]<br>
+      chunk_index=3 → words[1350:1642] (final, shorter)</div>`
+  },
+  {
+    id:"embed", icon:"🧮", label:"Embed", tag:"BAAI/bge-base-en-v1.5",
+    title:"4 · Turn text into vectors", badge:"sentence-transformers",
+    desc:"Each chunk is prefixed with <code>\"passage: \"</code> (a BGE-model convention) and encoded into a normalized 768-dim vector, run locally — no external API call.",
+    body:`
+      <div class="kv">
+        <div>model</div><div>BAAI/bge-base-en-v1.5</div>
+        <div>dims</div><div>768</div>
+        <div>prefix</div><div>"passage: " (indexing side)</div>
+        <div>normalize</div><div>true (cosine-ready)</div>
+      </div>
+      ${vecRow(7)}`
+  },
+  {
+    id:"store", icon:"🗄️", label:"Store", tag:"Qdrant",
+    title:"5 · Upsert into the vector store", badge:"qdrant-client",
+    desc:"The vector plus its payload (text, source filename, chunk index) is upserted into a Qdrant collection using cosine distance, in batches of 100.",
+    body:`
+      <div class="kv">
+        <div>collection</div><div>confluence_docs</div>
+        <div>distance</div><div>cosine</div>
+        <div>payload</div><div>{ text, source, chunk_index }</div>
+      </div>
+      <div class="code">PointStruct(
+  id=uuid4(),
+  vector=[0.0123, -0.0871, 0.0342, ...],   # 768 floats
+  payload={"text": "...", "source": "${DOC}", "chunk_index": 0}
+)</div>
+      <p style="color:var(--sub);font-size:.82rem;margin-top:10px">Repeat for every chunk of every document → the knowledge base is now searchable.</p>`
+  }
+];
+
+const CAND_ROWS = [
+  {src:"Password Policy §3.6", txt:"Minimum length 12 · uppercase · lowercase · digit · special char · breach check", score:88},
+  {src:"Create User §3.1", txt:"password field: Required if send_invite is false", score:74},
+  {src:"Error Reference §7", txt:"WEAK_PASSWORD — password does not meet policy", score:69},
+  {src:"Username Rules §3.1", txt:"3–64 chars, must start with letter/digit", score:52},
+  {src:"Rate Limits §1", txt:"Auth / password reset — 10 req/min/IP", score:47},
+  {src:"Audit Log §6", txt:"user.password_changed — password changed by user or admin", score:41},
+  {src:"User Status §2.1", txt:"locked — too many failed login attempts", score:33},
+  {src:"Group Object §2.2", txt:"Groups provide hierarchical organization of users", score:12},
+  {src:"Role Object §2.3", txt:"Permission format: action:<resource>:<operation>", score:9},
+  {src:"Changelog §8", txt:"2.3.0 — breach check now runs synchronously on creation", score:8},
+];
+
+const QUERY = [
+  {
+    id:"question", icon:"❓", label:"Question", tag:"from user",
+    title:"1 · A user asks a question", badge:"POST /ask",
+    desc:"The API receives a natural-language question — no keyword matching happens here, the whole sentence goes in as-is.",
+    body:`<div class="answer">"${QUESTION}"</div>`
+  },
+  {
+    id:"qembed", icon:"🧮", label:"Embed Query", tag:"same BGE model",
+    title:"2 · Embed the question", badge:"embedder.py",
+    desc:"The query is prefixed with <code>\"query: \"</code> (not <code>\"passage: \"</code>) and embedded with the same model used for chunks, landing it in the same vector space.",
+    body:`
+      <div class="kv"><div>prefix</div><div>"query: ${QUESTION}"</div></div>
+      ${vecRow(42)}`
+  },
+  {
+    id:"search", icon:"🔎", label:"Vector Search", tag:"top 10 · cosine",
+    title:"3 · Broad recall from Qdrant", badge:"TOP_K_RETRIEVE=10",
+    desc:"Qdrant returns the 10 chunks whose vectors are most similar (cosine) to the query vector — optimized for recall, not yet precision.",
+    body:`<div id="candList"></div>`
+  },
+  {
+    id:"rerank", icon:"🎯", label:"Rerank", tag:"cross-encoder · top 3",
+    title:"4 · Cross-encoder reranks for precision", badge:"ms-marco-MiniLM-L-6-v2",
+    desc:"A cross-encoder scores the query against each candidate's <em>actual text</em> jointly (slower, more accurate than cosine similarity) and only the top 3 survive.",
+    body:`<div id="rerankList"></div>`
+  },
+  {
+    id:"generate", icon:"🤖", label:"Generate", tag:"Llama 3 · Ollama",
+    title:"5 · LLM writes the answer", badge:"retrieval/llm.py",
+    desc:"The 3 reranked chunks are assembled into a context block and sent to a local Llama 3 model (via Ollama) with a system prompt that forbids answering outside the given context.",
+    body:`
+      <div class="code">SYSTEM: Answer only from the context. If the context
+does not contain the answer, say so. Cite the source
+filename when you use information from it.
+
+CONTEXT:
+[1] Source: ${DOC}
+Minimum length 12 characters. Uppercase, lowercase,
+digit, and special character required...
+
+QUESTION: ${QUESTION}</div>`
+  },
+  {
+    id:"answer", icon:"💬", label:"Answer", tag:"+ sources",
+    title:"6 · Response returned to the user", badge:"200 OK",
+    desc:"The API responds with the generated answer and the list of source files it was grounded in — so the user can verify it.",
+    body:`
+      <div class="answer">
+        To create a user, the password must be at least 12 characters (max 128), and include at least one uppercase letter, one lowercase letter, one digit, and one special character (e.g. <code>! @ # $ % ^ &amp;</code>). It can't contain the username, must not match any of the last 12 passwords, and is checked against the <code>HaveIBeenPwned</code> breach database. Passwords expire after 90 days by default.
+        <div class="src-line">Sources: ${DOC}</div>
+      </div>`
+  }
+];
+
+let pipeline = "ingest";
+let stages = INGEST;
+let idx = 0;
+let playing = false;
+let timer = null;
+
+const stageRow = document.getElementById("stageRow");
+const panel = document.getElementById("panel");
+const dotsEl = document.getElementById("dots");
+
+function renderStageRow(){
+  stageRow.innerHTML = "";
+  stages.forEach((s,i)=>{
+    const card = document.createElement("div");
+    card.className = "stage-card" + (i===idx?" active":"") + (i<idx?" done":"");
+    card.innerHTML = `<div class="ic">${s.icon}</div><div class="lb">${s.label}</div><div class="tg">${s.tag}</div>`;
+    card.onclick = ()=>{ stop(); goTo(i); };
+    stageRow.appendChild(card);
+    if(i < stages.length-1){
+      const c = document.createElement("div");
+      c.className = "connector" + (i===idx-1 ? " flow" : "");
+      c.innerHTML = `<svg viewBox="0 0 100 22"><path id="p${i}" d="M0,11 L100,11"/><circle class="dot" r="3.5" fill="var(--accent)" style="offset-path:path('M0,11 L100,11')"></circle></svg>`;
+      stageRow.appendChild(c);
+    }
+  });
+}
+
+function renderDots(){
+  dotsEl.innerHTML = "";
+  stages.forEach((s,i)=>{
+    const d = document.createElement("span");
+    if(i===idx) d.className="on";
+    d.title = s.label;
+    d.onclick = ()=>{ stop(); goTo(i); };
+    dotsEl.appendChild(d);
+  });
+}
+
+function renderPanel(){
+  const s = stages[idx];
+  panel.innerHTML = `
+    <h2>${s.title} <span class="badge">${s.badge}</span></h2>
+    <p class="desc">${s.desc}</p>
+    <div class="body">${s.body}</div>
+  `;
+  if(s.id === "search"){
+    const el = document.getElementById("candList");
+    el.innerHTML = CAND_ROWS.map(c=>`
+      <div class="cand">
+        <span class="src">${c.src}</span>
+        <span class="txt">${c.txt}</span>
+        <span class="bar-wrap"><span class="bar" style="width:${c.score}%"></span></span>
+      </div>`).join("");
+  }
+  if(s.id === "rerank"){
+    const el = document.getElementById("rerankList");
+    const kept = [0,1,2];
+    el.innerHTML = CAND_ROWS.map((c,i)=>`
+      <div class="cand ${kept.includes(i)?'kept':'dropped'}">
+        <span class="src">${c.src}</span>
+        <span class="txt">${c.txt}</span>
+        <span class="bar-wrap"><span class="bar" style="width:${kept.includes(i)? (95-i*8) : c.score}%"></span></span>
+      </div>`).join("");
+  }
+}
+
+function render(){
+  renderStageRow();
+  renderDots();
+  renderPanel();
+  history.replaceState(null, "", "#" + pipeline + ":" + idx);
+}
+
+function goTo(i){
+  idx = Math.max(0, Math.min(stages.length-1, i));
+  render();
+  if(idx === stages.length-1) stop();
+}
+
+function next(){ if(idx < stages.length-1) goTo(idx+1); else stop(); }
+function prev(){ goTo(idx-1); }
+
+function play(){
+  if(idx >= stages.length-1) idx = 0;
+  playing = true;
+  document.getElementById("playBtn").textContent = "⏸ Pause";
+  timer = setInterval(()=>{
+    if(idx >= stages.length-1){ stop(); return; }
+    next();
+  }, 2600);
+}
+function stop(){
+  playing = false;
+  document.getElementById("playBtn").textContent = "▶ Play";
+  clearInterval(timer);
+}
+function toggle(){ playing ? stop() : play(); }
+
+document.getElementById("prevBtn").onclick = ()=>{ stop(); prev(); };
+document.getElementById("nextBtn").onclick = ()=>{ stop(); next(); };
+document.getElementById("resetBtn").onclick = ()=>{ stop(); goTo(0); };
+document.getElementById("playBtn").onclick = toggle;
+
+document.querySelectorAll("#tabs button").forEach(btn=>{
+  btn.onclick = ()=>{
+    stop();
+    document.querySelectorAll("#tabs button").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    pipeline = btn.dataset.p;
+    stages = pipeline === "ingest" ? INGEST : QUERY;
+    idx = 0;
+    render();
+  };
+});
+
+(function initFromHash(){
+  const m = /^#(ingest|query):(\d+)$/.exec(location.hash);
+  if(m){
+    pipeline = m[1];
+    stages = pipeline === "ingest" ? INGEST : QUERY;
+    idx = Math.max(0, Math.min(stages.length-1, parseInt(m[2],10)));
+    document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active", b.dataset.p===pipeline));
+  }
+})();
+render();
+</script>
+</body>
+</html>

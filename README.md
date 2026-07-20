@@ -3,6 +3,8 @@
 Self-hosted RAG over PDF and Markdown documents.  
 No AWS Bedrock, no managed services — runs entirely on your own infrastructure.
 
+**🔬 [See how it works, step by step](https://sanket-murugkar.github.io/custom-rag-pipeline/)** — an interactive walkthrough of the ingestion and query pipelines, using the real config values and models from this repo.
+
 ## Stack
 
 | Layer | Tool | Notes |
