@@ -1,0 +1,16 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Ingestion state (local tracking, machine-specific)
+.ingestion_state.json
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
