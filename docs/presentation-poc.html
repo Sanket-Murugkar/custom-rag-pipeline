@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-Hosted RAG POC</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#eef2f0; --surface:#ffffff; --surface-2:#e5ece9;
+    --ink:#11201c; --sub:#55655f; --line:#d5dedb;
+    --accent:#0d7d6c; --accent-ink:#ffffff; --accent-soft:#dcefea; --accent-deep:#0a5c4f;
+    --warn:#b9772a; --warn-soft:#f5e6d3; --bad:#a4433a; --bad-soft:#f6e1de;
+    --shadow:0 1px 2px rgba(10,20,18,.05), 0 14px 34px rgba(10,20,18,.09);
+    --display: "Archivo", "Arial Narrow", sans-serif;
+    --body: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0b1210; --surface:#121b18; --surface-2:#17211d;
+      --ink:#e7ece9; --sub:#94a39d; --line:#233129;
+      --accent:#34d2b6; --accent-ink:#062622; --accent-soft:#173330; --accent-deep:#5eeed4;
+      --warn:#e2a355; --warn-soft:#3a2c17; --bad:#e28579; --bad-soft:#3a201c;
+      --shadow:0 1px 2px rgba(0,0,0,.35), 0 18px 44px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b1210; --surface:#121b18; --surface-2:#17211d;
+    --ink:#e7ece9; --sub:#94a39d; --line:#233129;
+    --accent:#34d2b6; --accent-ink:#062622; --accent-soft:#173330; --accent-deep:#5eeed4;
+    --warn:#e2a355; --warn-soft:#3a2c17; --bad:#e28579; --bad-soft:#3a201c;
+    --shadow:0 1px 2px rgba(0,0,0,.35), 0 18px 44px rgba(0,0,0,.4);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--body);
+    line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  h1,h2,h3{font-family:var(--display); text-wrap:balance; margin:0;}
+
+  .deck{position:relative; height:100dvh; width:100vw; display:flex; flex-direction:column;}
+
+  .topbar{flex:0 0 auto; display:flex; align-items:center; gap:14px; padding:14px 28px 0;}
+  .progress-track{flex:1; height:3px; background:var(--line); border-radius:2px; overflow:hidden;}
+  .progress-fill{height:100%; background:var(--accent); border-radius:2px; transition:width .35s ease;}
+  .counter{font-family:var(--mono); font-size:.72rem; color:var(--sub); letter-spacing:.03em; white-space:nowrap; font-variant-numeric:tabular-nums;}
+  .brand{font-family:var(--mono); font-size:.72rem; color:var(--sub); letter-spacing:.03em; white-space:nowrap;}
+
+  .stage{flex:1 1 auto; position:relative; overflow:hidden;}
+
+  .slide{
+    position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center;
+    padding:34px 7vw; opacity:1; transform:translateX(0); overflow-y:auto;
+  }
+  .slide[hidden]{display:none;}
+  .slide.enter-fwd{animation:slideInFwd .38s ease both;}
+  .slide.enter-back{animation:slideInBack .38s ease both;}
+  @keyframes slideInFwd{from{opacity:0; transform:translateX(28px);} to{opacity:1; transform:translateX(0);}}
+  @keyframes slideInBack{from{opacity:0; transform:translateX(-28px);} to{opacity:1; transform:translateX(0);}}
+  @media (prefers-reduced-motion: reduce){
+    .slide.enter-fwd, .slide.enter-back{animation:none;}
+  }
+
+  .kicker{
+    font-family:var(--mono); font-size:.76rem; font-weight:500; color:var(--accent);
+    letter-spacing:.09em; text-transform:uppercase; margin:0 0 12px;
+  }
+  .headline{font-size:clamp(1.8rem, 3.6vw, 2.7rem); font-weight:800; letter-spacing:-.01em; max-width:20ch;}
+  .headline.tight{max-width:26ch;}
+  .subhead{font-size:clamp(.98rem,1.3vw,1.15rem); color:var(--sub); max-width:60ch; margin-top:12px; font-weight:400;}
+  .content{margin-top:22px; max-width:1020px;}
+
+  /* Title slide */
+  .slide.title-slide{align-items:flex-start;}
+  .title-slide .headline{font-size:clamp(2rem,4.8vw,3.6rem); max-width:20ch;}
+  .title-mark{
+    width:52px; height:52px; border-radius:14px; background:var(--accent); color:var(--accent-ink);
+    display:flex; align-items:center; justify-content:center; font-size:1.5rem; margin-bottom:24px;
+    box-shadow:var(--shadow);
+  }
+  .hint{margin-top:28px; font-size:.82rem; color:var(--sub); font-family:var(--mono);}
+
+  /* Analogy callout */
+  .analogy{
+    background:var(--accent-soft); border-left:3px solid var(--accent); border-radius:0 12px 12px 0;
+    padding:15px 20px; font-size:.98rem; max-width:660px; color:var(--ink);
+  }
+  .analogy b{color:var(--accent-deep);}
+
+  /* Banner (zero-cloud statement) */
+  .banner{
+    display:inline-block; background:var(--accent-soft); border:1.5px solid var(--accent); border-radius:12px;
+    padding:12px 22px; font-family:var(--mono); font-size:.82rem; font-weight:600; letter-spacing:.03em;
+    color:var(--accent-deep); text-transform:uppercase; box-shadow:var(--shadow); max-width:820px;
+  }
+
+  /* Card grids */
+  .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; max-width:980px;}
+  .tile{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px 20px; box-shadow:var(--shadow);}
+  .tile .ic{font-size:1.5rem; margin-bottom:8px;}
+  .tile b{display:block; font-family:var(--display); font-size:1.02rem; font-weight:700; margin-bottom:5px;}
+  .tile span{color:var(--sub); font-size:.87rem;}
+
+  /* Flow diagram */
+  .flow{display:flex; flex-wrap:wrap; align-items:center; gap:8px; max-width:1020px;}
+  .flow .step{
+    background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 16px;
+    font-size:.9rem; font-weight:600; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:3px;
+  }
+  .flow .step small{color:var(--sub); font-weight:400; font-family:var(--mono); font-size:.68rem;}
+  .flow .step.accent{background:var(--accent); color:var(--accent-ink); border-color:var(--accent);}
+  .flow .step.accent small{color:var(--accent-ink); opacity:.75;}
+  .flow .arrow{color:var(--sub); font-size:1.1rem; flex:0 0 auto;}
+  .flow-row{display:flex; flex-wrap:wrap; align-items:center; gap:8px;}
+  .flow-label{font-family:var(--mono); font-size:.68rem; color:var(--accent); text-transform:uppercase; letter-spacing:.07em; margin-bottom:8px; font-weight:600;}
+
+  /* Numbered step list (pipeline walkthroughs) */
+  .steps{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; max-width:720px;}
+  .steps li{display:flex; gap:14px; align-items:baseline; font-size:.95rem;}
+  .steps li .n{
+    flex:0 0 24px; font-family:var(--mono); font-size:.78rem; font-weight:700; color:var(--accent-ink);
+    background:var(--accent); border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center;
+  }
+  .steps li b{font-weight:600;}
+  .steps li span.tool{color:var(--sub); font-family:var(--mono); font-size:.78rem; display:block; margin-top:1px;}
+
+  /* Code / answer / example */
+  .example-tag{display:inline-block; font-family:var(--mono); font-size:.64rem; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--sub); margin-bottom:6px;}
+  .code{
+    background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px;
+    font-family:var(--mono); font-size:.74rem; white-space:pre-wrap; max-width:620px; box-shadow:var(--shadow); line-height:1.55;
+  }
+  .answer{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; max-width:620px; box-shadow:var(--shadow); font-size:.88rem;}
+  .answer .src-line{margin-top:8px; font-size:.75rem; color:var(--sub); font-family:var(--mono);}
+
+  /* Table */
+  table.spec{border-collapse:collapse; max-width:900px; font-size:.86rem; width:100%;}
+  table.spec th, table.spec td{text-align:left; padding:8px 16px 8px 0; border-bottom:1px solid var(--line);}
+  table.spec th{color:var(--sub); font-weight:500; font-family:var(--mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.05em;}
+  table.spec td b{font-weight:600;}
+  table.spec td code{font-family:var(--mono); background:var(--surface-2); padding:2px 6px; border-radius:5px; font-size:.82rem;}
+
+  .split{display:grid; grid-template-columns:1fr 1fr; gap:30px; align-items:start; max-width:1080px;}
+  @media (max-width:760px){ .split, .tiles{grid-template-columns:1fr;} }
+
+  /* Nav */
+  .navbar{flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:16px; padding:0 28px 18px;}
+  .navbtn{
+    appearance:none; border:1px solid var(--line); background:var(--surface); color:var(--ink);
+    font:inherit; font-weight:600; font-size:.85rem; padding:10px 18px; border-radius:10px; cursor:pointer;
+    box-shadow:var(--shadow); transition:border-color .15s, color .15s, opacity .15s; display:flex; align-items:center; gap:8px;
+  }
+  .navbtn:hover:not(:disabled){border-color:var(--accent); color:var(--accent);}
+  .navbtn:disabled{opacity:.35; cursor:default;}
+  .navbtn:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  .navhint{font-family:var(--mono); font-size:.72rem; color:var(--sub);}
+</style>
+</head>
+<body>
+<div class="deck">
+
+  <div class="topbar">
+    <span class="brand">SELF-HOSTED RAG · POC REVIEW</span>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <span class="counter" id="counter">01 / 09</span>
+  </div>
+
+  <div class="stage" id="stage">
+
+    <section class="slide title-slide">
+      <div class="title-mark">🧪</div>
+      <p class="kicker">Proof of Concept</p>
+      <h1 class="headline">Building a Self-Hosted RAG Pipeline</h1>
+      <p class="subhead">From concept to POC — 100% self-hosted, zero cloud AI cost.</p>
+      <p class="hint" style="margin-top:36px">[Your Name] · [Date] · Engineering Team</p>
+      <p class="hint">→ use the arrow keys, or Next below, to move through this deck</p>
+    </section>
+
+    <section class="slide" hidden>
+      <p class="kicker">01 — The Problem</p>
+      <h2 class="headline tight">Why do we need RAG?</h2>
+      <div class="content">
+        <div class="tiles">
+          <div class="tile"><div class="ic">🧠</div><b>Stale knowledge</b><span>Base models don't know our internal docs — they guess, and guess wrong.</span></div>
+          <div class="tile"><div class="ic">🔒</div><b>Data privacy</b><span>Sending proprietary internal docs to a third-party API is a data exposure risk.</span></div>
+          <div class="tile"><div class="ic">📚</div><b>Context limits</b><span>Context windows can't hold hundreds of pages of documentation at once.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" hidden>
+      <p class="kicker">02 — The Concept</p>
+      <h2 class="headline tight">What is RAG?</h2>
+      <div class="content flow">
+        <div class="step"><span>🔎 Retrieval</span><small>find the relevant facts</small></div>
+        <span class="arrow">+</span>
+        <div class="step"><span>🧷 Augmented</span><small>inject it as context</small></div>
+        <span class="arrow">+</span>
+        <div class="step accent"><span>✍️ Generation</span><small>answer using that context</small></div>
+      </div>
+      <div class="analogy" style="margin-top:22px">From <b>"guessing from memory"</b> to an <b>"open-book exam."</b> The model isn't smarter — it just isn't guessing anymore.</div>
+    </section>
+
+    <section class="slide" hidden>
+      <p class="kicker">03 — Conceptual Flow</p>
+      <h2 class="headline tight">Two phases, two different times</h2>
+      <div class="content" style="display:flex; flex-direction:column; gap:22px;">
+        <div>
+          <div class="flow-label">Phase 1 — Ingestion (background, ahead of time)</div>
+          <div class="flow-row">
+            <div class="step"><span>📄 Internal Documents</span><small>PDF / MD</small></div>
+            <span class="arrow">→</span>
+            <div class="step"><span>✂️ Word Chunking</span></div>
+            <span class="arrow">→</span>
+            <div class="step accent"><span>🗄️ Vector Database</span><small>knowledge base</small></div>
+          </div>
+        </div>
+        <div>
+          <div class="flow-label">Phase 2 — Querying (runtime, every question)</div>
+          <div class="flow-row">
+            <div class="step"><span>❓ User Question</span></div>
+            <span class="arrow">→</span>
+            <div class="step"><span>🔎 Vector DB Search</span></div>
+            <span class="arrow">→</span>
+            <div class="step"><span>🎯 Top Matching Chunks</span></div>
+            <span class="arrow">→</span>
+            <div class="step accent"><span>🤖 LLM + Context Prompt</span></div>
+            <span class="arrow">→</span>
+            <div class="step"><span>✅ Precise Sourced Answer</span></div>
+          </div>
+        </div>
+        <p class="subhead">The LLM only ever appears in phase 2 — and only ever sees the handful of chunks retrieval already picked out.</p>
+      </div>
+    </section>
+
+    <section class="slide" hidden>
+      <p class="kicker">04 — Architecture &amp; Stack</p>
+      <h2 class="headline tight">Zero cloud dependencies</h2>
+      <div class="content" style="display:flex; flex-direction:column; gap:18px;">
+        <div class="banner">Zero cloud AI dependencies — runs entirely on our own infrastructure</div>
+        <table class="spec">
+          <tr><th>Layer</th><th>Tool</th><th>Notes</th></tr>
+          <tr><td>Document storage</td><td><b>MinIO</b> / AWS S3</td><td>Same code, swap via env vars</td></tr>
+          <tr><td>Document parsing</td><td>pypdf · markdown-it-py</td><td>PDF and Markdown</td></tr>
+          <tr><td>Chunking</td><td>Custom word splitter</td><td>500 words, 50-word overlap</td></tr>
+          <tr><td>Embeddings</td><td>BAAI/bge-base-en-v1.5</td><td>sentence-transformers, local</td></tr>
+          <tr><td>Vector store</td><td>Qdrant</td><td>Docker, port 6333</td></tr>
+          <tr><td>Reranking</td><td>ms-marco-MiniLM-L-6-v2</td><td>cross-encoder, local</td></tr>
+          <tr><td>LLM</td><td>Llama 3 via Ollama</td><td>local, port 11434, no GPU</td></tr>
+          <tr><td>API</td><td>FastAPI</td><td>REST, port 8000</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section class="slide" hidden>
+      <p class="kicker">05 — Ingestion Pipeline</p>
+      <h2 class="headline tight">From document to searchable vector</h2>
+      <div class="content flow" style="margin-top:20px">
+        <div class="step"><span>📤 Upload</span><small>MinIO bucket "rag-docs"</small></div>
+        <span class="arrow">→</span>
+        <div class="step"><span>🔍 Parse</span><small>pypdf / markdown-it-py</small></div>
+        <span class="arrow">→</span>
+        <div class="step"><span>✂️ Chunk</span><small>500 words, 50 overlap</small></div>
+        <span class="arrow">→</span>
+        <div class="step"><span>🧮 Vectorize</span><small>bge-base-en-v1.5</small></div>
+        <span class="arrow">→</span>
+        <div class="step accent"><span>🗄️ Store</span><small>Qdrant</small></div>
+      </div>
+      <p class="subhead">Each step maps to one real component — no black boxes.</p>
+    </section>
+
+    <section class="slide" hidden>
+      <p class="kicker">06 — Query &amp; Reranking</p>
+      <h2 class="headline tight">Answering a real question</h2>
+      <div class="split">
+        <div>
+          <span class="example-tag">Example query</span>
+          <div class="analogy" style="margin-bottom:18px">"What are the password requirements when creating a user?" — answered from <b>user-master-service-docs.md</b></div>
+          <ol class="steps">
+            <li><span class="n">1</span><div><b>Request submitted</b><span class="tool">POST /ask (FastAPI)</span></div></li>
+            <li><span class="n">2</span><div><b>Query vectorized &amp; matched</b><span class="tool">Qdrant vector search — top 10</span></div></li>
+            <li><span class="n">3</span><div><b>Candidates reranked</b><span class="tool">ms-marco-MiniLM-L-6-v2 — top 3 kept</span></div></li>
+            <li><span class="n">4</span><div><b>Context + query forwarded</b><span class="tool">Llama 3 via Ollama, local</span></div></li>
+            <li><span class="n">5</span><div><b>Response returned</b><span class="tool">answer + source attribution</span></div></li>
+          </ol>
+        </div>
+        <div>
+          <span class="example-tag">Request</span>
+          <div class="code">POST /ask
+{ "query": "What are the password
+  requirements when creating a user?" }</div>
+          <span class="example-tag" style="margin-top:14px; display:block">Response</span>
+          <div class="answer">
+            "To create a user, send a POST request to /users with ..."
+            <div class="src-line">sources: ["user-master-service-docs.md"]</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" hidden>
+      <p class="kicker">07 — Engineering Highlights</p>
+      <h2 class="headline tight">Built to be practical, not just possible</h2>
+      <div class="content">
+        <div class="tiles">
+          <div class="tile"><div class="ic">⏱️</div><b>Incremental ingestion</b><span>Each file's ETag is tracked in .ingestion_state.json — re-running only touches new or changed files.</span></div>
+          <div class="tile"><div class="ic">🔌</div><b>Zero-code-change portability</b><span>MinIO ↔ AWS S3 is an .env change, not a code change. Same codebase, local dev today, production tomorrow.</span></div>
+          <div class="tile"><div class="ic">🪶</div><b>Lightweight footprint</b><span>~6 GB total disk. Runs on a standard CPU — no GPU required anywhere in the pipeline.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" hidden>
+      <p class="kicker">08 — API &amp; Live Demo</p>
+      <h2 class="headline tight">Three endpoints, one demo</h2>
+      <div class="content" style="display:flex; flex-direction:column; gap:20px;">
+        <table class="spec">
+          <tr><th>Endpoint</th><th>Purpose</th></tr>
+          <tr><td><code>POST /ask</code></td><td>Query the RAG system</td></tr>
+          <tr><td><code>POST /ingest</code></td><td>Incremental, or full re-ingestion with <code>{"force": true}</code></td></tr>
+          <tr><td><code>GET /health</code></td><td>System status check</td></tr>
+        </table>
+        <div class="analogy">Live demo: drop a new document in, trigger ingestion, ask a question — watch the source attribution come back in the response.</div>
+        <p class="subhead" style="margin-top:0">Next step: pick one real internal doc set and run this as a pilot. Every layer — storage, vector store, embedding model, LLM — is swappable on its own.</p>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="navbar">
+    <button class="navbtn" id="prevBtn">← Prev</button>
+    <span class="navhint">arrow keys also work</span>
+    <button class="navbtn" id="nextBtn">Next →</button>
+  </div>
+
+</div>
+
+<script>
+const slides = Array.from(document.querySelectorAll(".slide"));
+const total = slides.length;
+let current = 0;
+
+const progressFill = document.getElementById("progressFill");
+const counter = document.getElementById("counter");
+const prevBtn = document.getElementById("prevBtn");
+const nextBtn = document.getElementById("nextBtn");
+
+function pad(n){ return String(n).padStart(2,"0"); }
+
+function render(direction){
+  slides.forEach((s,i)=>{
+    if(i === current){
+      s.hidden = false;
+      s.classList.remove("enter-fwd","enter-back");
+      void s.offsetWidth;
+      s.classList.add(direction === "back" ? "enter-back" : "enter-fwd");
+    } else {
+      s.hidden = true;
+    }
+  });
+  progressFill.style.width = ((current+1)/total*100) + "%";
+  counter.textContent = pad(current+1) + " / " + pad(total);
+  prevBtn.disabled = current === 0;
+  nextBtn.disabled = current === total-1;
+  history.replaceState(null, "", "#" + (current+1));
+}
+
+function goTo(i, direction){
+  current = Math.max(0, Math.min(total-1, i));
+  render(direction);
+}
+
+prevBtn.onclick = ()=> goTo(current-1, "back");
+nextBtn.onclick = ()=> goTo(current+1, "fwd");
+
+window.addEventListener("keydown", (e)=>{
+  if(["ArrowRight","PageDown"," "].includes(e.key)){ e.preventDefault(); goTo(current+1,"fwd"); }
+  else if(["ArrowLeft","PageUp"].includes(e.key)){ e.preventDefault(); goTo(current-1,"back"); }
+  else if(e.key === "Home"){ goTo(0,"back"); }
+  else if(e.key === "End"){ goTo(total-1,"fwd"); }
+});
+
+(function initFromHash(){
+  const n = parseInt(location.hash.replace("#",""), 10);
+  if(!isNaN(n) && n>=1 && n<=total) current = n-1;
+})();
+render("fwd");
+</script>
+</body>
+</html>

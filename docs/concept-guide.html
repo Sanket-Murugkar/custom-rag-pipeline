@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG POC — Concept Guide</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#14171c; --sub:#5b6472;
+    --line:#e2e5ea; --accent:#0f7b6c; --accent-ink:#ffffff;
+    --accent-soft:#e3f3f0; --warn:#b8860b; --shadow:0 1px 2px rgba(16,24,32,.06),0 8px 24px rgba(16,24,32,.06);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e1114; --panel:#171b20; --ink:#e8ebef; --sub:#9aa4b2;
+      --line:#2a2f37; --accent:#3ddbc0; --accent-ink:#08201b;
+      --accent-soft:#123330; --warn:#e0b34d; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.35);
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px;}
+
+  header.top{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:flex-end;margin-bottom:20px;}
+  header.top h1{font-size:1.6rem;margin:0 0 6px;letter-spacing:-.01em;}
+  header.top p{margin:0;color:var(--sub);max-width:620px;font-size:.95rem;}
+  a.repo-link{color:var(--accent);text-decoration:none;font-size:.85rem;font-weight:600;white-space:nowrap;}
+  a.repo-link:hover{text-decoration:underline;}
+
+  .tabs{display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;
+    width:fit-content;max-width:100%;overflow-x:auto;box-shadow:var(--shadow);margin-bottom:22px;}
+  .tabs button{
+    appearance:none;border:0;background:transparent;color:var(--sub);white-space:nowrap;
+    font:inherit;font-weight:600;font-size:.88rem;padding:9px 16px;border-radius:9px;cursor:pointer;
+    transition:background .15s,color .15s;
+  }
+  .tabs button.active{background:var(--accent);color:var(--accent-ink);}
+
+  .controls{display:flex;align-items:center;gap:10px;margin:4px 0 22px;flex-wrap:wrap;}
+  .controls button{
+    appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    font:inherit;font-weight:600;font-size:.85rem;padding:9px 14px;border-radius:9px;cursor:pointer;
+    box-shadow:var(--shadow); transition:border-color .15s, color .15s;
+  }
+  .controls button:hover{border-color:var(--accent);color:var(--accent);}
+  .note{font-size:.76rem;color:var(--sub);margin-left:auto;}
+
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px 28px;
+    box-shadow:var(--shadow); min-height:220px;
+  }
+  .panel h2{margin:0 0 4px;font-size:1.2rem;display:flex;align-items:center;gap:10px;}
+  .panel h2 .badge{
+    font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+    background:var(--accent-soft);color:var(--accent);padding:3px 8px;border-radius:6px;
+  }
+  .panel .desc{color:var(--sub);font-size:.95rem;margin:2px 0 18px;max-width:680px;}
+  .panel .body{font-size:.92rem;}
+  .panel .body h3{font-size:1rem;margin:22px 0 8px;}
+  .panel .body h3:first-child{margin-top:0;}
+  .panel .body p{margin:0 0 12px;max-width:720px;}
+  .panel .body ul, .panel .body ol{margin:0 0 14px;padding-left:22px;max-width:720px;}
+  .panel .body li{margin-bottom:6px;}
+  .panel .body a{color:var(--accent);}
+
+  .analogy{
+    background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;
+    padding:12px 16px;margin:14px 0;font-size:.88rem;max-width:680px;
+  }
+  .analogy b{color:var(--accent);}
+
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:5px 14px;font-family:var(--mono);font-size:.8rem;margin:10px 0;}
+  .kv div:nth-child(odd){color:var(--sub);}
+  .code{
+    background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+    font-family:var(--mono);font-size:.78rem;white-space:pre-wrap;overflow-x:auto;margin:10px 0;max-width:720px;
+  }
+  .chip{display:inline-block;background:var(--accent-soft);color:var(--accent);font-size:.72rem;font-weight:700;
+    padding:2px 8px;border-radius:6px;margin:2px 4px 2px 0;font-family:var(--mono);}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:14px 0 18px;max-width:900px;}
+  .card{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+  .card .ic{font-size:1.3rem;margin-bottom:6px;}
+  .card b{display:block;font-size:.88rem;margin-bottom:3px;}
+  .card span{color:var(--sub);font-size:.78rem;}
+
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0 18px;}
+  .flow .step{
+    background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
+    font-size:.82rem;font-weight:600;white-space:nowrap;
+  }
+  .flow .arrow{color:var(--sub);font-size:1rem;}
+
+  .cand{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:.82rem;max-width:720px;}
+  .cand:last-child{border-bottom:0;}
+  .cand .src{flex:0 0 auto;color:var(--sub);font-family:var(--mono);font-size:.72rem;}
+  .cand .txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cand .bar-wrap{flex:0 0 90px;height:6px;background:var(--line);border-radius:4px;overflow:hidden;}
+  .cand .bar{height:100%;background:var(--accent);border-radius:4px;}
+  .cand.kept{background:var(--accent-soft);border-radius:8px;padding:7px 8px;}
+  .cand.dropped{opacity:.4;text-decoration:line-through;}
+
+  .filelinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;}
+  .filelinks a{
+    font-size:.78rem;font-family:var(--mono);color:var(--accent);text-decoration:none;
+    background:var(--accent-soft);padding:5px 10px;border-radius:7px;
+  }
+  .filelinks a:hover{text-decoration:underline;}
+
+  footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);color:var(--sub);font-size:.8rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+  footer a{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>🧭 RAG POC — Concept Guide</h1>
+      <p>A plain-language tour of what this project is, why RAG is needed at all, how retrieval actually finds the right text, and how it all connects end to end. No prior AI knowledge assumed.</p>
+    </div>
+    <a class="repo-link" href="../" target="_blank" rel="noopener">← back to repo README</a>
+  </header>
+
+  <div class="tabs" id="tabs">
+    <button data-p="poc" class="active">1 · What This POC Is</button>
+    <button data-p="rag">2 · The Concept of RAG</button>
+    <button data-p="retrieval">3 · Retrieval, Explained</button>
+    <button data-p="e2e">4 · End to End</button>
+  </div>
+
+  <div class="controls">
+    <button id="prevBtn">◀ Prev</button>
+    <button id="nextBtn">Next ▶</button>
+    <div class="note">Conceptual reading — for the animated, code-accurate walkthrough see <a href="index.html" style="color:var(--accent)">index.html</a>.</div>
+  </div>
+
+  <div class="panel" id="panel"></div>
+
+  <footer>
+    <span>Confluence RAG Pipeline — self-hosted, no managed services.</span>
+    <span><a href="../">View source on GitHub</a></span>
+  </footer>
+</div>
+
+<script>
+const SECTIONS = {
+
+poc: {
+  title: "1 · What This POC Is", badge: "plain English",
+  desc: "If you've never touched this project before, start here.",
+  body: `
+    <h3>The one-sentence version</h3>
+    <p>This is a small system that lets you drop a pile of PDF or Markdown documents into storage, then ask plain-English questions and get answers pulled <em>from those exact documents</em> — not from the AI's general training knowledge, and not from any cloud AI service.</p>
+
+    <div class="analogy">
+      <b>Think of it like this:</b> imagine hiring a research assistant who has actually read every single one of your documents, cover to cover, and can instantly flip to the right page and quote it back to you when you ask a question — instead of giving you a vague answer from general knowledge.
+    </div>
+
+    <h3>Why it's a POC ("proof of concept")</h3>
+    <p>It's built to prove this pattern works fully <b>self-hosted</b> — meaning every piece runs on your own machine or your own infrastructure. No OpenAI, no AWS Bedrock, no per-request API bill to a cloud AI vendor. That matters if your documents are sensitive (internal wikis, customer data, proprietary specs) and can't leave your network.</p>
+
+    <h3>The moving parts, in plain terms</h3>
+    <div class="cards">
+      <div class="card"><div class="ic">🪣</div><b>Document storage</b><span>MinIO locally (same API as Amazon S3) — just a bucket of files.</span></div>
+      <div class="card"><div class="ic">🧠</div><b>Local AI models</b><span>Small models running on your own hardware — no GPU required.</span></div>
+      <div class="card"><div class="ic">🗄️</div><b>Vector database</b><span>Qdrant — a database built for "find things similar to this."</span></div>
+      <div class="card"><div class="ic">🌐</div><b>A simple API</b><span>FastAPI — send a question, get an answer, as plain HTTP.</span></div>
+    </div>
+
+    <h3>What you can actually do with it</h3>
+    <ol>
+      <li>Drop files (PDFs, Markdown docs) into the bucket.</li>
+      <li>Run one command to "ingest" them — this reads, slices, and indexes every document.</li>
+      <li>Ask a question over an API call, e.g. <code>"What are the password requirements when creating a user?"</code></li>
+      <li>Get back a written answer <b>plus the exact source file</b> it came from, so you can verify it yourself.</li>
+    </ol>
+    <p>That's the whole POC. Everything else in this guide explains <em>how</em> steps 2 and 3 actually work under the hood.</p>
+    <div class="filelinks">
+      <a href="../README.md" target="_blank">README.md</a>
+      <a href="index.html">index.html — animated walkthrough</a>
+    </div>
+  `
+},
+
+rag: {
+  title: "2 · The Concept of RAG", badge: "why + how",
+  desc: "RAG = Retrieval-Augmented Generation. Here's what that phrase actually means.",
+  body: `
+    <h3>The problem RAG solves</h3>
+    <p>A large language model (LLM) like Llama 3 is very good at writing fluent, plausible-sounding text — but it only "knows" whatever was in its training data, frozen at some point in the past. It has <b>never read your internal documents</b>. Ask it a question about your company's password policy, and it will either say it doesn't know, or worse, confidently make something up (this is called <b>hallucination</b>).</p>
+
+    <div class="analogy">
+      <b>Analogy:</b> an LLM without RAG is like a brilliant new hire who's never been given access to the company wiki — smart, well-spoken, but working from guesswork on anything specific to you.
+    </div>
+
+    <h3>Why not just paste all your documents into every prompt?</h3>
+    <p>Two reasons this doesn't scale:</p>
+    <ul>
+      <li><b>Size limits</b> — models can only accept so much text at once ("context window"). 100 documents won't fit.</li>
+      <li><b>Signal-to-noise</b> — even if it fit, burying the one relevant paragraph inside thousands of irrelevant ones makes the model less accurate, not more, and much slower/more expensive to run.</li>
+    </ul>
+    <p>Why not just <b>retrain</b> the model on your documents instead? Retraining ("fine-tuning") is slow, expensive, and has to be redone every time a document changes — impractical for docs that update weekly.</p>
+
+    <h3>RAG's actual idea</h3>
+    <p>Don't make the model memorize anything. Instead, at the moment someone asks a question:</p>
+    <ol>
+      <li><b>Retrieve</b> — go search your documents and pull out just the few paragraphs that are actually relevant to this specific question.</li>
+      <li><b>Augment</b> — glue those paragraphs onto the question as extra context.</li>
+      <li><b>Generate</b> — ask the LLM to answer the question <em>using only that context</em>.</li>
+    </ol>
+    <p>That's the full meaning of "Retrieval-Augmented Generation" — generation (the LLM writing an answer), augmented (given extra material to work from), by retrieval (a search step that finds that material).</p>
+
+    <h3>How this POC does it</h3>
+    <div class="flow">
+      <div class="step">📄 Documents</div><div class="arrow">→</div>
+      <div class="step">✂️ Cut into small chunks</div><div class="arrow">→</div>
+      <div class="step">🧮 Convert each chunk to numbers</div><div class="arrow">→</div>
+      <div class="step">🗄️ Store in Qdrant</div>
+    </div>
+    <p>That's done once, ahead of time (<b>ingestion</b>). Then for every question, this repo does the retrieve → augment → generate loop:</p>
+    <div class="kv">
+      <div>retrieval model</div><div>BAAI/bge-base-en-v1.5 (local embeddings)</div>
+      <div>vector store</div><div>Qdrant</div>
+      <div>generation model</div><div>Llama 3, via Ollama (local, no GPU required)</div>
+    </div>
+    <p>The key win: the LLM never has to "know" your documents. It just has to be handed the right 3 paragraphs and asked to summarize/answer from them — which is a much easier and more reliable job than recalling facts from memory.</p>
+    <div class="filelinks">
+      <a href="rag-concept-explained.md">rag-concept-explained.md — the 100-document walkthrough</a>
+    </div>
+  `
+},
+
+retrieval: {
+  title: "3 · Retrieval, Explained", badge: "the search step",
+  desc: "This is the part that decides which text the LLM even gets to see. If retrieval picks the wrong chunks, no amount of LLM skill fixes the answer.",
+  body: `
+    <h3>Step 1 — Everything becomes a point in space</h3>
+    <p>Every chunk of every document was already converted, during ingestion, into a list of 768 numbers (a "vector") by an embedding model. Chunks about similar ideas end up as vectors that sit <em>close together</em>, even if they don't share the same words — a chunk about "resetting a forgotten password" and one about "password recovery steps" land near each other.</p>
+    <div class="analogy">
+      <b>Analogy:</b> imagine every paragraph in your documents was placed as a dot on a giant map, arranged so that paragraphs about similar topics cluster near each other — a "passwords" neighborhood, a "billing" neighborhood, and so on. Retrieval is just "find the neighborhood closest to this question."
+    </div>
+
+    <h3>Step 2 — The question gets placed on the same map</h3>
+    <p>When a user asks a question, it's converted into a vector using the <em>exact same</em> embedding model. It's now just another point on that same map.</p>
+
+    <h3>Step 3 — Broad recall: grab the 10 nearest chunks</h3>
+    <p>Qdrant is asked: "of every chunk on this map, which 10 are geometrically closest to the question?" This is fast — Qdrant is purpose-built to answer "nearest neighbor" questions instantly even across millions of points — but it's an approximation. It's optimized to not miss the right answer, even if a couple of the 10 turn out to be irrelevant.</p>
+
+    <h3>Step 4 — Precision pass: rerank down to the best 3</h3>
+    <p>Those 10 candidates get a second, much more careful look. A <b>cross-encoder</b> model reads the question and each candidate's actual text <em>side by side</em> (instead of just comparing map coordinates) and scores how relevant each one really is. Only the top 3 make the cut.</p>
+    <p>Here's what that narrowing typically looks like for a password-policy question:</p>
+    <div id="candList"></div>
+
+    <h3>Why two steps instead of one?</h3>
+    <ul>
+      <li>The careful cross-encoder pass is <b>too slow</b> to run against every chunk in the whole collection.</li>
+      <li>The fast map-distance search is <b>too approximate</b> to trust on its own for the final answer.</li>
+      <li>So: cast a wide, fast net first (10), then spend the expensive precision check only on that short list.</li>
+    </ul>
+
+    <h3>The exact numbers this repo uses</h3>
+    <div class="kv">
+      <div>fetch from Qdrant</div><div>top 10 (<code>TOP_K_RETRIEVE</code>)</div>
+      <div>keep after rerank</div><div>top 3 (<code>TOP_K_RERANK</code>)</div>
+      <div>rerank model</div><div>cross-encoder/ms-marco-MiniLM-L-6-v2</div>
+    </div>
+    <div class="filelinks">
+      <a href="../retrieval/retriever.py" target="_blank">retrieval/retriever.py</a>
+    </div>
+  `
+},
+
+e2e: {
+  title: "4 · End to End", badge: "the full picture",
+  desc: "Stitching ingestion and retrieval together into the complete lifecycle of one question.",
+  body: `
+    <h3>Two flows, two different times</h3>
+    <p>It helps to keep these mentally separate — they run at completely different times and for different reasons:</p>
+    <div class="cards">
+      <div class="card"><div class="ic">🏗️</div><b>Ingestion — offline</b><span>Runs once, or whenever documents are added/changed. Builds the searchable knowledge base.</span></div>
+      <div class="card"><div class="ic">💬</div><b>Query — online</b><span>Runs on every single question a user asks, in real time.</span></div>
+    </div>
+
+    <h3>The complete journey of one document</h3>
+    <div class="flow">
+      <div class="step">📄 Uploaded to MinIO</div><div class="arrow">→</div>
+      <div class="step">🔍 Parsed to plain text</div><div class="arrow">→</div>
+      <div class="step">✂️ Split into 500-word chunks (50-word overlap)</div><div class="arrow">→</div>
+      <div class="step">🧮 Embedded (768-dim vector)</div><div class="arrow">→</div>
+      <div class="step">🗄️ Stored in Qdrant</div>
+    </div>
+
+    <h3>The complete journey of one question</h3>
+    <div class="flow">
+      <div class="step">❓ User asks a question</div><div class="arrow">→</div>
+      <div class="step">🧮 Question embedded</div><div class="arrow">→</div>
+      <div class="step">🔎 Top 10 similar chunks fetched</div><div class="arrow">→</div>
+      <div class="step">🎯 Reranked down to top 3</div><div class="arrow">→</div>
+      <div class="step">🤖 Llama 3 answers from those 3</div><div class="arrow">→</div>
+      <div class="step">💬 Answer + source file returned</div>
+    </div>
+
+    <h3>Where these two flows meet</h3>
+    <p>They share exactly two things: the <b>same embedding model</b> (so the question and the chunks land in the same "map" of meaning) and the <b>same Qdrant collection</b> (the ingestion flow writes to it, the query flow reads from it). Everything else — parsing, chunking, reranking, generation — belongs to only one side.</p>
+
+    <h3>Why this design holds up</h3>
+    <ul>
+      <li><b>Grounded</b> — answers cite the real source file, so they're checkable, not just plausible-sounding.</li>
+      <li><b>Cheap to update</b> — add a new document and re-run ingestion; no retraining an LLM.</li>
+      <li><b>Fully local</b> — every model (embedding, reranking, generation) runs on your own hardware.</li>
+      <li><b>Portable</b> — swapping MinIO for real AWS S3 is just an environment variable change, same code.</li>
+    </ul>
+
+    <h3>Where to go next</h3>
+    <div class="filelinks">
+      <a href="../README.md" target="_blank">README.md — setup &amp; quick start</a>
+      <a href="rag-concept-explained.md">rag-concept-explained.md — the 100-document story</a>
+      <a href="index.html">index.html — animated, code-accurate walkthrough</a>
+    </div>
+  `
+}
+
+};
+
+const ORDER = ["poc","rag","retrieval","e2e"];
+let current = "poc";
+
+const panel = document.getElementById("panel");
+
+function render(){
+  const s = SECTIONS[current];
+  panel.innerHTML = `
+    <h2>${s.title} <span class="badge">${s.badge}</span></h2>
+    <p class="desc">${s.desc}</p>
+    <div class="body">${s.body}</div>
+  `;
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active", b.dataset.p===current));
+
+  const candEl = document.getElementById("candList");
+  if(candEl){
+    const rows = [
+      {src:"Password Policy §3.6", txt:"Minimum length 12 · uppercase · lowercase · digit · special char", score:88, kept:true},
+      {src:"Create User §3.1", txt:"password field: Required if send_invite is false", score:74, kept:true},
+      {src:"Error Reference §7", txt:"WEAK_PASSWORD — password does not meet policy", score:69, kept:true},
+      {src:"Username Rules §3.1", txt:"3–64 chars, must start with letter/digit", score:52, kept:false},
+      {src:"Rate Limits §1", txt:"Auth / password reset — 10 req/min/IP", score:47, kept:false},
+      {src:"Audit Log §6", txt:"user.password_changed — password changed by user or admin", score:41, kept:false},
+      {src:"User Status §2.1", txt:"locked — too many failed login attempts", score:33, kept:false},
+      {src:"Group Object §2.2", txt:"Groups provide hierarchical organization of users", score:12, kept:false},
+      {src:"Role Object §2.3", txt:"Permission format: action:<resource>:<operation>", score:9, kept:false},
+      {src:"Changelog §8", txt:"2.3.0 — breach check now runs synchronously on creation", score:8, kept:false},
+    ];
+    candEl.innerHTML = rows.map(c=>`
+      <div class="cand ${c.kept?'kept':'dropped'}">
+        <span class="src">${c.src}</span>
+        <span class="txt">${c.txt}</span>
+        <span class="bar-wrap"><span class="bar" style="width:${c.score}%"></span></span>
+      </div>`).join("") + `<p style="color:var(--sub);font-size:.78rem;margin-top:8px">Top 10 fetched by vector search (bar = similarity) → top 3 highlighted survive reranking.</p>`;
+  }
+
+  history.replaceState(null, "", "#" + current);
+}
+
+function goTo(p){ current = p; render(); }
+function step(dir){
+  const i = ORDER.indexOf(current);
+  const next = Math.max(0, Math.min(ORDER.length-1, i+dir));
+  goTo(ORDER[next]);
+}
+
+document.querySelectorAll("#tabs button").forEach(btn=>{
+  btn.onclick = ()=> goTo(btn.dataset.p);
+});
+document.getElementById("prevBtn").onclick = ()=> step(-1);
+document.getElementById("nextBtn").onclick = ()=> step(1);
+
+(function initFromHash(){
+  const p = location.hash.replace("#","");
+  if(ORDER.includes(p)) current = p;
+})();
+render();
+</script>
+</body>
+</html>
